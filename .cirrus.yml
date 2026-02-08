@@ -1,0 +1,61 @@
+task:
+  compute_engine_instance:
+    cpu: 4
+    memory: 16G  
+    image_project: freebsd-org-cloud-dev
+    platform: freebsd
+    disk: 100 # Gb
+    matrix:
+      - image: freebsd-15-0-release-amd64-ufs
+
+  env:
+    CIRRUS_CLONE_DEPTH: 1
+    # https://cirrus-ci.com/settings/github/gershwin-desktop
+    GITHUB_TOKEN: ENCRYPTED[ff61a8cfa5c3d58342d99b7a07d68da268d02308059da137046b037b1eb23f840fd8599925eec1826e06fcdbdff39d1c]
+
+  freebsd-build_cache:
+    folder: /usr/local/freebsd-build/amd64/cache/
+
+  auto_cancellation: false
+  stateful: false
+  timeout_in: 60m
+  # only_if: $CIRRUS_TAG !=~ 'continuous.*'
+  # Do not build tags, only commits
+  only_if: $CIRRUS_TAG !=~ '..*'
+
+  env:
+    matrix:
+      DESKTOP: 'gershwin'
+
+  env:
+    matrix:
+      arch: 'amd64'
+
+  Environment_script:
+    # sed -i '' -e 's|quarterly|release_1|g' "${uzip}/etc/pkg/FreeBSD.conf"
+    - rm -f /usr/local/freebsd-build/amd64/cache/packages/transient/* || true # Don't cache transient pkg
+    - env
+    - kldload zfs.ko || true
+    - kldload tmpfs.ko || true
+    - kldload nullfs.ko || true
+    - kldload geom_uzip.ko || true
+    # As of FreeBSD 13.1, sha is in base and the sha package is no longer built
+    - pkg install -y pkg git-lite zsync wget bash zip devel/py-xdg librsvg2 ca_root_nss transmission-cli fdupes zsync # qemu-devel uefi-edk2-qemu-x86_64
+    - mkdir -p /usr/local/freebsd-build/uzip /usr/local/freebsd-build/cdroot/
+    - mount -t tmpfs tmpfs /usr/local/freebsd-build/uzip
+    - mount -t tmpfs tmpfs /usr/local/freebsd-build/cdroot/
+    
+  Build_script:
+    - export VER=$(uname -r | cut -d "-" -f 1)
+    - export TARGET_VERSION=15
+    - export TARGET_ARCH=amd64
+    - /bin/sh ./build.sh
+    - df -h
+    - ls -lh /usr/local/freebsd-build/iso/*.iso* || false # Error out if ISO was not produced to mitigate the above
+    # ( cd /usr/local/freebsd-build/ ; zsyncmake *.iso )
+    - rm -f /usr/local/freebsd-build/amd64/cache/packages/transient/* || true # Don't cache transient pkg
+    
+  Upload_script:
+    - export VER=$(uname -r | cut -d "-" -f 1) # No way to pass on from Build_script to Upload_script?
+    - ls -lh /usr/local/freebsd-build/iso/*
+    - case "$CIRRUS_BRANCH" in *pull/*) echo skipping since PR ;; * ) wget -c -q https://github.com/tcnksm/ghr/files/5247714/ghr.zip ; unzip ghr.zip ; ./ghr -prerelease -delete -t "${GITHUB_TOKEN}" -u "${CIRRUS_REPO_OWNER}" -r "${CIRRUS_REPO_NAME}" -b "This is an __experimental build__ for __developers__ and __testers__. Regular users should get the latest released version instead." -c "${CIRRUS_CHANGE_IN_REPO}" "${CIRRUS_BRANCH}"-"${VER}" /usr/local/freebsd-build/iso/ ; esac
