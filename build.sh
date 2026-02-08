@@ -30,11 +30,11 @@ TARGET_ABI="FreeBSD:${TARGET_VERSION}:${TARGET_ARCH}"
 case "${TARGET_VERSION}" in
     15)
         TARGET_OSVERSION="1500028"
-        REPO_BRANCH="quarterly" # release_1 will contain XLibre
+        REPO_BRANCH="latest" # release_1 will contain XLibre; base_quarterly is missing?
         ;;
     16)
         TARGET_OSVERSION="1600000"
-        REPO_BRANCH="unstable"
+        REPO_BRANCH="latest"
         ;;
     *)
         TARGET_OSVERSION="${TARGET_VERSION}00000"
