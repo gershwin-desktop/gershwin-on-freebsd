@@ -124,6 +124,18 @@ mount -t tmpfs tmpfs /etc
 mount -t nullfs /tmp/etc /etc
 
 ######################################################################
+# From here on optional, Gershwin specific configuration
+######################################################################
+
+mkdir -p /Local/Library/Preferences
+cat > /Local/Library/Preferences/LoginWindow.plist <<\EOF
+{
+    lastLoggedInUser = user;
+    lastSession = "/System/Library/Scripts/Gershwin.sh";
+}
+EOF
+
+######################################################################
 # From here on optional, helloSystem specific optimizations
 ######################################################################
 
