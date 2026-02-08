@@ -30,7 +30,7 @@ TARGET_ABI="FreeBSD:${TARGET_VERSION}:${TARGET_ARCH}"
 case "${TARGET_VERSION}" in
     15)
         TARGET_OSVERSION="1500028"
-        REPO_BRANCH="stable"
+        REPO_BRANCH="release_0"
         ;;
     16)
         TARGET_OSVERSION="1600000"
@@ -114,12 +114,12 @@ setup_workspace() {
     log "Generating repository configuration for ${TARGET_ABI} on ${REPO_BRANCH} branch..."
     cat > "${CONFIG_DIR}/FreeBSD.conf" <<EOF
 FreeBSD_base: {
-  url: "https://pkg.freebsd.org/${REPO_BRANCH}/${TARGET_ABI}/base",
+  url: "https://pkg.freebsd.org/${TARGET_ABI}/base_${REPO_BRANCH}",
   enabled: yes
 }
 
 FreeBSD_pkg: {
-  url: "https://pkg.freebsd.org/${REPO_BRANCH}/${TARGET_ABI}/latest",
+  url: "https://pkg.freebsd.org/${TARGET_ABI}/${REPO_BRANCH}",
   enabled: yes
 }
 EOF
