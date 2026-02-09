@@ -130,7 +130,7 @@ mount -t nullfs /tmp/etc /etc
 mkdir -p /Local/Library/Preferences
 cat > /Local/Library/Preferences/LoginWindow.plist <<\EOF
 {
-    lastLoggedInUser = user;
+    lastLoggedInUser = admin;
     lastSession = "/System/Library/Scripts/Gershwin.sh";
 }
 EOF
