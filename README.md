@@ -29,7 +29,7 @@ Build system for generating Gershwin Desktop live media based on FreeBSD.
    sudo ./build.sh
    ```
 
-The resulting ISO and its SHA256 checksum will be located in `/usr/local/gershwin-build/iso/`.
+The resulting ISO and its SHA256 checksum will be located in `/usr/local/freebsd-build/iso/`.
 
 ## Live Environment
 
