@@ -79,6 +79,7 @@ mkdir -p /media/.uzip
 mount -t ufs -o ro /dev/md0.uzip /media/.uzip
 
 kldload /media/.uzip/boot/kernel/nullfs.ko
+mount -t nullfs /media/.uzip/Developer /Developer
 mount -t nullfs /media/.uzip/System /System
 mount -t nullfs /media/.uzip/Local /Local
 mount -t nullfs /media/.uzip/bin /bin
@@ -109,6 +110,8 @@ mkdir -p /tmp/usr/local
 mount -t unionfs /tmp/usr/local /usr/local
 
 # Not strictly needed, but may come in handy to test modifications in /System and /root
+mkdir -p /tmp/Developer
+mount -t unionfs /tmp/Developer /Developer
 mkdir -p /tmp/System
 mount -t unionfs /tmp/System /System
 mkdir -p /tmp/root

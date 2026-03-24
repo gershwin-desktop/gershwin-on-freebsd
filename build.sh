@@ -324,6 +324,7 @@ prepare_boot_env() {
     "${CD_ROOT}/compat/linux/dev" \
     "${CD_ROOT}/compat/linux/proc" \
     "${CD_ROOT}/compat/linux/sys" \
+    "${CD_ROOT}/Developer" \
     "${CD_ROOT}/dev" \
     "${CD_ROOT}/etc" \
     "${CD_ROOT}/home" \
