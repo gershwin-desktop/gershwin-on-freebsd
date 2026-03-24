@@ -278,27 +278,10 @@ EFS
 
 build_gershwin_components() {
     log "Building Gershwin components from source..."
-    [ -d "${WORKDIR}/gershwin-build" ] && rm -rf "${WORKDIR}/gershwin-build"
-    git clone --depth 1 https://github.com/gershwin-desktop/gershwin-build "${WORKDIR}/gershwin-build"
-    
-    # Use absolute path to workspace parent
-    PARENT_DIR="/home/user/Developer/repos"
-    mkdir -p "${WORKDIR}/gershwin-build/repos"
-    
-    # List of components that should go into repos/
-    for component in gershwin-airwaves gershwin-assets gershwin-components gershwin-docs gershwin-eau-theme gershwin-radiobrowser gershwin-system gershwin-systempreferences gershwin-terminal gershwin-textedit gershwin-welcomesplash gershwin-windowmanager gershwin-workspace libobjc2 libs-back libs-base libs-gui libs-opal libs-quartzcore swift-corelibs-libdispatch tools-make; do
-        if [ -d "${PARENT_DIR}/${component}" ]; then
-            log "Using local source for ${component}"
-            cp -R "${PARENT_DIR}/${component}" "${WORKDIR}/gershwin-build/repos/${component}"
-        fi
-    done
+    git clone --depth 1 https://github.com/gershwin-desktop/gershwin-developer "${RELEASE_DIR}/Developer"
 
-    # Run checkout for anything missing
-    ( cd "${WORKDIR}/gershwin-build" && PINNED=1 ./checkout.sh  )
-    
-    cp -R "${WORKDIR}/gershwin-build" "${RELEASE_DIR}/root/gershwin-build"
     cp /etc/resolv.conf "${RELEASE_DIR}/etc/resolv.conf"
-    
+
     # Pre-build hack for compatibility
     chroot "${RELEASE_DIR}" sh -c "cd /usr/local/lib && rm -f libbfd-2.43.so libbfd-2.44.so && ln -sf libbfd.so libbfd-2.43.so && ln -sf libbfd.so libbfd-2.44.so || true"
     chroot "${RELEASE_DIR}" ldconfig -m /usr/local/lib
@@ -309,14 +292,14 @@ build_gershwin_components() {
     mount -t procfs proc "${RELEASE_DIR}/proc" 2>/dev/null || true
 
     # Build inside chroot
-    # We use -E to preserve environment if needed, but chroot sh -c is cleaner
-    chroot "${RELEASE_DIR}" sh -c "cd /root/gershwin-build && gmake install"
-    
+    chroot "${RELEASE_DIR}" sh -c "/Developer/Library/Scripts/Bootstrap.sh"
+    chroot "${RELEASE_DIR}" sh -c "PINNED=1 /Developer/Library/Scripts/Checkout.sh"
+    chroot "${RELEASE_DIR}" sh -c "cd /Developer && make install"
+
     # Cleanup mounts
     umount "${RELEASE_DIR}/proc" || true
     umount "${RELEASE_DIR}/dev" || true
-    
-    rm -rf "${WORKDIR}/gershwin-build"
+
     rm -f "${RELEASE_DIR}/etc/resolv.conf"
 }
 
