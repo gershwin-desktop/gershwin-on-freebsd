@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-freebsd-15-amd64:
     name: FreeBSD x86_64
@@ -46,3 +49,17 @@ jobs:
           name: gershwin-on-freebsd-15-amd64
           path: artifacts/FreeBSD/15/amd64
           if-no-files-found: error
+
+      - name: Publish to continuous release
+        if: github.event_name != 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -e
+          shopt -s nullglob
+          cd artifacts/FreeBSD/15/amd64
+          assets=(*.iso *.iso.sha256)
+          ls -lh "${assets[@]}"
+          wget -q https://raw.githubusercontent.com/probonopd/uploadtool/refs/heads/copilot/fix-release-deletion-issue/upload.sh
+          bash upload.sh "${assets[@]}"
