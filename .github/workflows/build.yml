@@ -31,6 +31,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install qemu-system-aarch64
+        if: matrix.arch == 'aarch64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-arm
+
       - name: Build ISO inside FreeBSD VM
         uses: vmactions/freebsd-vm@v1
         with:
