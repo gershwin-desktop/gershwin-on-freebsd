@@ -31,19 +31,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install qemu-system-aarch64 and enable KVM
+      - name: Install qemu-system-aarch64 and probe KVM
         if: matrix.arch == 'aarch64'
         run: |
+          set -e
           sudo apt-get update
           sudo apt-get install -y qemu-system-arm
-          # ubuntu-24.04-arm runners ship /dev/kvm but don't grant the runner
-          # user access by default, so QEMU silently falls back to TCG (very
-          # slow). Open the device up so qemu-system-aarch64 uses KVM accel.
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
-            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          ls -l /dev/kvm
+          # Diagnostic: report whether /dev/kvm exists. If it does, open it
+          # up to non-root so QEMU can use KVM accel; if not, log that and
+          # proceed (the action will fall back to TCG software emulation).
+          if [ -e /dev/kvm ]; then
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' \
+              | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules || true
+            sudo udevadm trigger --name-match=kvm || true
+            ls -l /dev/kvm
+          else
+            echo "::warning::/dev/kvm not present on this runner — VM will run under TCG (slow)."
+            ls -l /dev/ | grep -i kvm || true
+          fi
 
       - name: Build ISO inside FreeBSD VM
         uses: vmactions/freebsd-vm@v1
