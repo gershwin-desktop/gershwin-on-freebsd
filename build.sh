@@ -400,14 +400,20 @@ generate_iso() {
     # Provide a way to know from the booted ISO what ISO it is
     echo "${IMAGE_NAME_PREFIX}-$(date +%Y%m%d%H%M%S)-${ARCH_STR}.iso" >> "${CD_ROOT}/.iso"
 
-    # Canonical path: run the upstream mkisoimages.sh from its directory so it can
-    # reliably source install-boot.sh and produce a hybrid EFI/BIOS image.
-    if [ ! -f "${CWD}/resources/scripts/mkisoimages.sh" ]; then
-        error "Required script missing: ${CWD}/resources/scripts/mkisoimages.sh"
+    # Pick the right mkisoimages script for the target architecture. amd64
+    # produces a hybrid EFI+BIOS image; arm64 is EFI-only (no PMBR / freebsd-boot).
+    case "${TARGET_ARCH}" in
+        amd64)   MKISO_SCRIPT="mkisoimages.sh" ;;
+        aarch64) MKISO_SCRIPT="mkisoimages-arm64.sh" ;;
+        *)       error "No mkisoimages script for TARGET_ARCH=${TARGET_ARCH}" ;;
+    esac
+
+    if [ ! -f "${CWD}/resources/scripts/${MKISO_SCRIPT}" ]; then
+        error "Required script missing: ${CWD}/resources/scripts/${MKISO_SCRIPT}"
     fi
 
-    log "Creating ISO using mkisoimages.sh (canonical single path — EFI and BIOS hybrid)..."
-    ( cd "${CWD}/resources/scripts" && sh ./mkisoimages.sh -b "${LABEL}" "${ISO_PATH}" "${CD_ROOT}" )
+    log "Creating ISO using ${MKISO_SCRIPT}..."
+    ( cd "${CWD}/resources/scripts" && sh ./${MKISO_SCRIPT} -b "${LABEL}" "${ISO_PATH}" "${CD_ROOT}" )
 
     
     log "ISO created at: ${ISO_PATH}"
