@@ -31,11 +31,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install qemu-system-aarch64
+      - name: Install qemu-system-aarch64 and enable KVM
         if: matrix.arch == 'aarch64'
         run: |
           sudo apt-get update
           sudo apt-get install -y qemu-system-arm
+          # ubuntu-24.04-arm runners ship /dev/kvm but don't grant the runner
+          # user access by default, so QEMU silently falls back to TCG (very
+          # slow). Open the device up so qemu-system-aarch64 uses KVM accel.
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
 
       - name: Build ISO inside FreeBSD VM
         uses: vmactions/freebsd-vm@v1
