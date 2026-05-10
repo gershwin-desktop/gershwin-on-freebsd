@@ -122,6 +122,12 @@ FreeBSD_pkg: {
   url: "https://pkg.freebsd.org/${TARGET_ABI}/${REPO_BRANCH}",
   enabled: yes
 }
+
+FreeBSD_kmods: {
+  url: "https://pkg.freebsd.org/${TARGET_ABI}/kmods_${REPO_BRANCH}",
+  enabled: yes,
+  priority: 10
+}
 EOF
 }
 
@@ -197,7 +203,7 @@ install_gershwin_software() {
     # Install main packages from the Pkg repo
     log "Installing Gershwin and driver packages..."
     if [ -s "${WORKDIR}/filtered_pkg.txt" ]; then
-        cat "${WORKDIR}/filtered_pkg.txt" | xargs env ABI="${ABI}" OSVERSION="${OSVERSION}" IGNORE_OSVERSION="yes" ASSUME_ALWAYS_YES="yes" pkg -R "${CONFIG_DIR}" -r "${RELEASE_DIR}" install -y -r FreeBSD_pkg
+        cat "${WORKDIR}/filtered_pkg.txt" | xargs env ABI="${ABI}" OSVERSION="${OSVERSION}" IGNORE_OSVERSION="yes" ASSUME_ALWAYS_YES="yes" pkg -R "${CONFIG_DIR}" -r "${RELEASE_DIR}" install -y
     else
         log "Warning: No desktop packages found to install!"
     fi
