@@ -1,6 +1,7 @@
 bwi-firmware-kmod
 bwn-firmware-kmod
 drm-kmod
+gpu-firmware-kmod
 realtek-re-kmod
 utouch-kmod
 wifi-firmware-kmod
