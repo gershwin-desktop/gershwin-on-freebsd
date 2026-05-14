@@ -301,18 +301,22 @@ EFS
     cp "${OVERLAYS_DIR}/boot/loader.conf.d/gershwin.conf" \
        "${RELEASE_DIR}/boot/loader.conf.d/gershwin.conf"
 
-    # rc.d ordering for the Gershwin desktop boot: zfs -> ldconfig ->
-    # dbus/initgfx -> slim. Applied at build time (baked into the uzip
-    # rc.d files) because rcorder reads these headers before any boot
-    # script could run. Same edits the old init_script applied at runtime.
-    # initgfx and slim are package rc.d scripts (/usr/local/etc/rc.d);
-    # sed_if tolerates any of them being absent in a given build.
-    sed_if "${RELEASE_DIR}/etc/rc.d/ldconfig" -e 's|# REQUIRE: .*|# REQUIRE: zfs|g'
-    sed_if "${RELEASE_DIR}/usr/local/etc/rc.d/dbus" -e 's|# REQUIRE: .*|# REQUIRE: ldconfig|g'
-    sed_if "${RELEASE_DIR}/usr/local/etc/rc.d/initgfx" -e 's|# REQUIRE: .*|# REQUIRE: ldconfig|g'
-    sed_if "${RELEASE_DIR}/usr/local/etc/rc.d/slim" -e 's|# REQUIRE: .*|# REQUIRE: localize dbus initgfx\n# BEFORE: |g'
-    # Lower initgfx's inter-Xorg-run sleep from 3s to 1s.
+    # initgfx tweak: lower its inter-Xorg-run sleep from 3s to 1s.
     sed_if "${RELEASE_DIR}/usr/local/etc/rc.d/initgfx" -e 's|\&\& __wait 3|\&\& __wait 1|g'
+    #
+    # NOTE: the old init_script also rewrote the "# REQUIRE:" lines of
+    # ldconfig / dbus / initgfx / slim to reorder them ("zfs -> ldconfig
+    # -> dbus/initgfx -> slim"). That is deliberately NOT ported here.
+    #
+    # It was only safe in the old architecture because cleanvar was a
+    # neutered stub. With the real cleanvar running, replacing ldconfig's
+    # stock "# REQUIRE: mountcritremote cleanvar" with "# REQUIRE: zfs"
+    # lets ldconfig run BEFORE cleanvar purges /var/run -- which then
+    # wipes the freshly-built /var/run/ld-elf.so.hints, so every
+    # /usr/local/lib library (libgmp -> dshelper, libdbus -> dbus/avahi,
+    # libintl -> cupsd) comes up "not found". FreeBSD's default rc
+    # ordering already runs ldconfig after cleanvar and before every
+    # DAEMON-level service, so no reordering is needed.
 
     # Keep the kernel from rebooting immediately on panic so the message
     # stays readable. Baked into the uzip sysctl.conf.
