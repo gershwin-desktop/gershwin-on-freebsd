@@ -92,6 +92,19 @@ error() {
     exit 1
 }
 
+# sed -i a file in place, but only if it exists. Some rc.d scripts come
+# from optional packages that may not be present in every build; under
+# `set -e` a missing target would otherwise abort the whole build.
+sed_if() {
+    _sed_if_file="$1"
+    shift
+    if [ -f "${_sed_if_file}" ]; then
+        sed -i '' "$@" "${_sed_if_file}"
+    else
+        log "sed_if: skipping absent ${_sed_if_file}"
+    fi
+}
+
 # --- Initialization ---
 [ "$(id -u)" -eq 0 ] || error "This script must be run as root."
 
@@ -292,12 +305,14 @@ EFS
     # dbus/initgfx -> slim. Applied at build time (baked into the uzip
     # rc.d files) because rcorder reads these headers before any boot
     # script could run. Same edits the old init_script applied at runtime.
-    sed -i '' -e 's|# REQUIRE: .*|# REQUIRE: zfs|g' "${RELEASE_DIR}/etc/rc.d/ldconfig"
-    sed -i '' -e 's|# REQUIRE: .*|# REQUIRE: ldconfig|g' "${RELEASE_DIR}/usr/local/etc/rc.d/dbus"
-    sed -i '' -e 's|# REQUIRE: .*|# REQUIRE: ldconfig|g' "${RELEASE_DIR}/etc/rc.d/initgfx"
-    sed -i '' -e 's|# REQUIRE: .*|# REQUIRE: localize dbus initgfx\n# BEFORE: |g' "${RELEASE_DIR}/usr/local/etc/rc.d/slim"
+    # initgfx and slim are package rc.d scripts (/usr/local/etc/rc.d);
+    # sed_if tolerates any of them being absent in a given build.
+    sed_if "${RELEASE_DIR}/etc/rc.d/ldconfig" -e 's|# REQUIRE: .*|# REQUIRE: zfs|g'
+    sed_if "${RELEASE_DIR}/usr/local/etc/rc.d/dbus" -e 's|# REQUIRE: .*|# REQUIRE: ldconfig|g'
+    sed_if "${RELEASE_DIR}/usr/local/etc/rc.d/initgfx" -e 's|# REQUIRE: .*|# REQUIRE: ldconfig|g'
+    sed_if "${RELEASE_DIR}/usr/local/etc/rc.d/slim" -e 's|# REQUIRE: .*|# REQUIRE: localize dbus initgfx\n# BEFORE: |g'
     # Lower initgfx's inter-Xorg-run sleep from 3s to 1s.
-    sed -i '' -e 's|\&\& __wait 3|\&\& __wait 1|g' "${RELEASE_DIR}/etc/rc.d/initgfx"
+    sed_if "${RELEASE_DIR}/usr/local/etc/rc.d/initgfx" -e 's|\&\& __wait 3|\&\& __wait 1|g'
 
     # Keep the kernel from rebooting immediately on panic so the message
     # stays readable. Baked into the uzip sysctl.conf.
