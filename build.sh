@@ -92,6 +92,19 @@ error() {
     exit 1
 }
 
+# sed -i a file in place, but only if it exists. Some rc.d scripts come
+# from optional packages that may not be present in every build; under
+# `set -e` a missing target would otherwise abort the whole build.
+sed_if() {
+    _sed_if_file="$1"
+    shift
+    if [ -f "${_sed_if_file}" ]; then
+        sed -i '' "$@" "${_sed_if_file}"
+    else
+        log "sed_if: skipping absent ${_sed_if_file}"
+    fi
+}
+
 # --- Initialization ---
 [ "$(id -u)" -eq 0 ] || error "This script must be run as root."
 
@@ -241,7 +254,7 @@ rtsold_enable="YES"
 background_dhclient="YES"
 ntpd_sync_on_start="YES"
 ntpd_flags="-g"
-kld_list="linux linux64 cuse fusefs hgame"
+kld_list="linux linux64 cuse fusefs hgame ig4 iicbus iichid utouch asmc if_urndis if_cdce if_ipheth"
 linux_enable="YES"
 devfs_enable="YES"
 devfs_system_ruleset="system"
@@ -260,11 +273,80 @@ initgfx_enable="YES"
 initgfx_menu="NO"
 smartd_enable="YES"
 dshelper_enable="YES"
+sendmail_enable="NO"
+sendmail_submit_enable="NO"
+sendmail_outbound_enable="NO"
+sendmail_msp_queue_enable="NO"
+allscreens_kbdflags="-b quiet.off"
 EFS
 
     # Initialize Directory Services and create live user
     log "Initializing Directory Services..."
     chroot "${RELEASE_DIR}" sh -c ". /System/Library/Makefiles/GNUstep.sh && dscli init"
+
+    # Default login window (admin, Gershwin session). Baked into the uzip
+    # so the live ISO and installed systems share it.
+    mkdir -p "${RELEASE_DIR}/Local/Library/Preferences"
+    cp "${OVERLAYS_DIR}/Local/Library/Preferences/LoginWindow.plist" \
+       "${RELEASE_DIR}/Local/Library/Preferences/LoginWindow.plist"
+
+    # /nvidia must exist for initgfx; writable automatically via the union.
+    mkdir -p "${RELEASE_DIR}/nvidia"
+
+    # Tier-2 loader drop-in: quiet boot + hardware quirks, baked into the
+    # uzip so installed systems inherit it (read via the base-default
+    # loader_conf_dirs="/boot/loader.conf.d"). The same file is also
+    # staged onto the cd9660 by prepare_boot_env's cp -R of overlays/boot.
+    mkdir -p "${RELEASE_DIR}/boot/loader.conf.d"
+    cp "${OVERLAYS_DIR}/boot/loader.conf.d/gershwin.conf" \
+       "${RELEASE_DIR}/boot/loader.conf.d/gershwin.conf"
+
+    # Loader menu (the v/V/s/Enter key-poll loop). Baked into the uzip so
+    # installed systems get it too -- it is boot-target-agnostic (just
+    # polls keys and calls core.boot()), and its own 3s loop is
+    # independent of beastie_disable/autoboot_delay, so "press v for
+    # verbose" works on an installed UFS root as well as the live ISO.
+    # Also staged onto the cd9660 by prepare_boot_env's cp -R of
+    # overlays/boot, which is what the live loader reads.
+    mkdir -p "${RELEASE_DIR}/boot/lua"
+    cp "${OVERLAYS_DIR}/boot/lua/local.lua" \
+       "${RELEASE_DIR}/boot/lua/local.lua"
+
+    # initgfx tweak: lower its inter-Xorg-run sleep from 3s to 1s.
+    sed_if "${RELEASE_DIR}/usr/local/etc/rc.d/initgfx" -e 's|\&\& __wait 3|\&\& __wait 1|g'
+    #
+    # NOTE: the old init_script also rewrote the "# REQUIRE:" lines of
+    # ldconfig / dbus / initgfx / slim to reorder them ("zfs -> ldconfig
+    # -> dbus/initgfx -> slim"). That is deliberately NOT ported here.
+    #
+    # It was only safe in the old architecture because cleanvar was a
+    # neutered stub. With the real cleanvar running, replacing ldconfig's
+    # stock "# REQUIRE: mountcritremote cleanvar" with "# REQUIRE: zfs"
+    # lets ldconfig run BEFORE cleanvar purges /var/run -- which then
+    # wipes the freshly-built /var/run/ld-elf.so.hints, so every
+    # /usr/local/lib library (libgmp -> dshelper, libdbus -> dbus/avahi,
+    # libintl -> cupsd) comes up "not found". FreeBSD's default rc
+    # ordering already runs ldconfig after cleanvar and before every
+    # DAEMON-level service, so no reordering is needed.
+
+    # Keep the kernel from rebooting immediately on panic so the message
+    # stays readable. Baked into the uzip sysctl.conf.
+    echo 'kern.panic_reboot_wait_time=30' >> "${RELEASE_DIR}/etc/sysctl.conf"
+
+    # VirtualBox guest integration via rc.local: detect VBox at boot, load
+    # the guest module and enable the guest services. Harmless on real
+    # hardware and on installed systems (the kenv check just fails).
+    if [ ! -f "${RELEASE_DIR}/etc/rc.local" ]; then
+        echo '#!/bin/sh' > "${RELEASE_DIR}/etc/rc.local"
+    fi
+    cat >> "${RELEASE_DIR}/etc/rc.local" <<'RCLOCAL'
+if [ "$(kenv -q smbios.system.product 2>/dev/null)" = "VirtualBox" ]; then
+	kldload vboxguest 2>/dev/null || true
+	sysrc vboxguest_enable="YES" >/dev/null 2>&1 || true
+	sysrc vboxservice_enable="YES" >/dev/null 2>&1 || true
+fi
+RCLOCAL
+    chmod +x "${RELEASE_DIR}/etc/rc.local"
 
     # Sudoers
     sed -i "" -e 's/# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/g' "${RELEASE_DIR}/usr/local/etc/sudoers"
@@ -324,39 +406,33 @@ downsize_system() {
 
 prepare_boot_env() {
     log "Preparing boot environment..."
-    cd "${RELEASE_DIR}" && tar -cf - boot | tar -xf - -C "${CD_ROOT}"
+    # The cd9660 boot layer carries /boot itself, minus the bulky firmware
+    # blobs (those ride in the uzip; see the /boot/firmware symlink below).
+    cd "${RELEASE_DIR}" && tar -cf - --exclude='boot/firmware' boot | tar -xf - -C "${CD_ROOT}"
+    # cd9660 only needs the unionfs-pivot scaffolding: /sysroot (the merge
+    # point), /upper (tmpfs target), /dev (for the pivot), /etc (login.conf),
+    # /sbin (the init symlink). Everything the running system sees comes
+    # from the uzip via the unionfs, so the old ~25-entry top-level dir
+    # list is gone.
     mkdir -p \
-    "${CD_ROOT}/bin" \
-    "${CD_ROOT}/compat/linux/dev" \
-    "${CD_ROOT}/compat/linux/proc" \
-    "${CD_ROOT}/compat/linux/sys" \
-    "${CD_ROOT}/Developer" \
+    "${CD_ROOT}/sysroot" \
+    "${CD_ROOT}/upper" \
     "${CD_ROOT}/dev" \
     "${CD_ROOT}/etc" \
-    "${CD_ROOT}/home" \
-    "${CD_ROOT}/lib" \
-    "${CD_ROOT}/libexec" \
-    "${CD_ROOT}/Local" \
-    "${CD_ROOT}/media" \
-    "${CD_ROOT}/mnt" \
-    "${CD_ROOT}/net" \
-    "${CD_ROOT}/Network" \
-    "${CD_ROOT}/nvidia" \
-    "${CD_ROOT}/opt" \
-    "${CD_ROOT}/proc" \
-    "${CD_ROOT}/rescue" \
-    "${CD_ROOT}/root" \
-    "${CD_ROOT}/sbin" \
-    "${CD_ROOT}/sys" \
-    "${CD_ROOT}/System" \
-    "${CD_ROOT}/tmp" \
-    "${CD_ROOT}/usr" \
-    "${CD_ROOT}/uzip" \
-    "${CD_ROOT}/var"
+    "${CD_ROOT}/sbin"
     cp "${RELEASE_DIR}"/COPYRIGHT "${CD_ROOT}"/
     chmod +x "${OVERLAYS_DIR}/boot/init_script"
     cp -R "${OVERLAYS_DIR}/boot" "${CD_ROOT}"
     cat "${CD_ROOT}"/boot/loader.conf
+    # /sbin/init -> /rescue/init: the kernel runs this as PID 1 from the
+    # cd9660; it then runs /boot/init_script via the init_script kenv.
+    ln -sf /rescue/init "${CD_ROOT}/sbin/init"
+    # /boot/firmware -> /sysroot/boot/firmware: kernel-context firmware
+    # loads (drm-kmod / iwlwifi via subr_firmware.c) resolve namei against
+    # the cd9660 root, not the chroot. The symlink redirects them through
+    # the /sysroot unionfs mount where the pkg-installed firmware lives.
+    # Rock Ridge on the cd9660 preserves the symlink.
+    ln -sf /sysroot/boot/firmware "${CD_ROOT}/boot/firmware"
     # Remove all modules from the ISO that are not required before the root filesystem is mounted
     # The whole directory /boot/modules is unnecessary
     rm -rf "${CD_ROOT}"/boot/modules/*
@@ -366,6 +442,7 @@ prepare_boot_env() {
     -not -name 'firewire.ko' \
     -not -name 'geom_uzip.ko' \
     -not -name 'tmpfs.ko' \
+    -not -name 'unionfs.ko' \
     -not -name 'xz.ko' \
     -delete
     # Compress the kernel
