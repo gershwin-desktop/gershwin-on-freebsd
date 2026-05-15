@@ -301,6 +301,17 @@ EFS
     cp "${OVERLAYS_DIR}/boot/loader.conf.d/gershwin.conf" \
        "${RELEASE_DIR}/boot/loader.conf.d/gershwin.conf"
 
+    # Loader menu (the v/V/s/Enter key-poll loop). Baked into the uzip so
+    # installed systems get it too -- it is boot-target-agnostic (just
+    # polls keys and calls core.boot()), and its own 3s loop is
+    # independent of beastie_disable/autoboot_delay, so "press v for
+    # verbose" works on an installed UFS root as well as the live ISO.
+    # Also staged onto the cd9660 by prepare_boot_env's cp -R of
+    # overlays/boot, which is what the live loader reads.
+    mkdir -p "${RELEASE_DIR}/boot/lua"
+    cp "${OVERLAYS_DIR}/boot/lua/local.lua" \
+       "${RELEASE_DIR}/boot/lua/local.lua"
+
     # initgfx tweak: lower its inter-Xorg-run sleep from 3s to 1s.
     sed_if "${RELEASE_DIR}/usr/local/etc/rc.d/initgfx" -e 's|\&\& __wait 3|\&\& __wait 1|g'
     #
