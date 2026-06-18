@@ -266,6 +266,9 @@ EFS
     log "Initializing Directory Services..."
     chroot "${RELEASE_DIR}" sh -c ". /System/Library/Makefiles/GNUstep.sh && dscli init"
 
+    # Allow empty password for sshd
+    sed -i '' 's/^[[:space:]#]*PermitEmptyPasswords[[:space:]]*.*/PermitEmptyPasswords yes/' /etc/ssh/ssh_config
+
     # Sudoers
     sed -i "" -e 's/# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/g' "${RELEASE_DIR}/usr/local/etc/sudoers"
 
