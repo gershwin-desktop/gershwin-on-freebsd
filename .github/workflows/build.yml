@@ -10,12 +10,46 @@ permissions:
   contents: write
 
 jobs:
-  build-freebsd-15-amd64:
-    name: FreeBSD x86_64
-    runs-on: ubuntu-latest
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: FreeBSD x86_64
+            runner: ubuntu-latest
+            arch: amd64
+            archname: amd64
+            artifact_name: gershwin-on-freebsd-15-amd64
+          - label: FreeBSD aarch64
+            runner: ubuntu-24.04-arm
+            arch: aarch64
+            archname: aarch64
+            artifact_name: gershwin-on-freebsd-15-aarch64
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install qemu-system-aarch64 and probe KVM
+        if: matrix.arch == 'aarch64'
+        run: |
+          set -e
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-arm
+          # Diagnostic: report whether /dev/kvm exists. If it does, open it
+          # up to non-root so QEMU can use KVM accel; if not, log that and
+          # proceed (the action will fall back to TCG software emulation).
+          if [ -e /dev/kvm ]; then
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' \
+              | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules || true
+            sudo udevadm trigger --name-match=kvm || true
+            ls -l /dev/kvm
+          else
+            echo "::warning::/dev/kvm not present on this runner — VM will run under TCG (slow)."
+            ls -l /dev/ | grep -i kvm || true
+          fi
 
       - name: Build ISO inside FreeBSD VM
         uses: vmactions/freebsd-vm@v1
@@ -38,34 +72,41 @@ jobs:
             mount -t tmpfs tmpfs /usr/local/freebsd-build/uzip || true
             mount -t tmpfs tmpfs /usr/local/freebsd-build/cdroot || true
             export TARGET_VERSION=15
-            export TARGET_ARCH=amd64
+            export TARGET_ARCH=${{ matrix.arch }}
             /bin/sh ./build.sh
             ls -lh /usr/local/freebsd-build/iso/
-            mkdir -p artifacts/FreeBSD/15/amd64
-            cp /usr/local/freebsd-build/iso/*.iso* artifacts/FreeBSD/15/amd64/
+            mkdir -p artifacts/FreeBSD/15/${{ matrix.archname }}
+            cp /usr/local/freebsd-build/iso/*.iso* artifacts/FreeBSD/15/${{ matrix.archname }}/
 
       - uses: actions/upload-artifact@v4
         with:
-          name: gershwin-on-freebsd-15-amd64
-          path: artifacts/FreeBSD/15/amd64
+          name: ${{ matrix.artifact_name }}
+          path: artifacts/FreeBSD/15/${{ matrix.archname }}
           if-no-files-found: error
 
-      - name: Publish to continuous release
-        if: github.event_name != 'pull_request'
+  publish:
+    name: Publish continuous release
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Upload to continuous release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -e
-          shopt -s nullglob
-          cd artifacts/FreeBSD/15/amd64
-          assets=(*.iso *.iso.sha256)
+          shopt -s nullglob globstar
+          assets=(dist/**/*.iso dist/**/*.iso.sha256)
           ls -lh "${assets[@]}"
 
           TAG="continuous"
           NOTES="GitHub Actions build log: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 
-          # Recreate the rolling release so old assets don't accumulate.
           gh release delete "$TAG" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
