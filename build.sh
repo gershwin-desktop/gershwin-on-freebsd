@@ -301,8 +301,8 @@ build_gershwin_components() {
     mount -t procfs proc "${RELEASE_DIR}/proc" 2>/dev/null || true
 
     # Build inside chroot
-    chroot "${RELEASE_DIR}" sh -c "/Developer/Library/Scripts/Bootstrap.sh"
-    chroot "${RELEASE_DIR}" sh -c "PINNED=1 /Developer/Library/Scripts/Checkout.sh"
+    chroot "${RELEASE_DIR}" sh -c "/Developer/Library/Scripts/bootstrap.sh"
+    chroot "${RELEASE_DIR}" sh -c "PINNED=1 /Developer/Library/Scripts/checkout.sh"
     chroot "${RELEASE_DIR}" sh -c "cd /Developer && make install"
 
     # Cleanup mounts
